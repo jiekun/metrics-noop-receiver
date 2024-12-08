@@ -5,45 +5,71 @@ import (
 	"fmt"
 	"github.com/VictoriaMetrics/metrics"
 	"github.com/gin-gonic/gin"
-	"github.com/golang/snappy"
-	otlp "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
+	"github.com/jiekun/metrics-noop-receiver/receiver"
 	"google.golang.org/grpc"
-	"io"
 	"log"
 	"net"
-)
-
-var (
-	prometheusRemoteWriteRequestTotal     = metrics.NewCounter(`requests_total{path="/api/v1/write"}`)
-	prometheusRemoteWriteReadErrorTotal   = metrics.NewCounter(`read_error_total{path="/api/v1/write"}`)
-	prometheusRemoteWriteDecodeErrorTotal = metrics.NewCounter(`decode_error_total{path="/api/v1/write"}`)
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 )
 
 func main() {
-	initHTTPServer()
-	initGRPCServer()
-}
+	httpSvr := initHTTPServer()
+	grpcSvr := initGRPCServer()
 
-func initHTTPServer() {
-	r := gin.Default()
-	{
-		r.POST("/api/v1/write", func(c *gin.Context) {
-			prometheusRemoteWriteRequestTotal.Inc()
-			b, err := io.ReadAll(c.Request.Body)
-			if err != nil {
-				prometheusRemoteWriteReadErrorTotal.Inc()
-			}
-			var body []byte
-			_, err = snappy.Decode(b, body)
-			if err != nil {
-				prometheusRemoteWriteDecodeErrorTotal.Inc()
-			}
-		})
+	// Wait for interrupt signal to gracefully shutdown the server with
+	// a timeout of 5 seconds.
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("shutdown Server ...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	if err := httpSvr.Shutdown(ctx); err != nil {
+		log.Fatal("http server shutdown:", err)
 	}
-	go r.Run()
+	// catching ctx.Done(). timeout of 1 seconds.
+	select {
+	case <-ctx.Done():
+		log.Println("timeout of 5 seconds.")
+	}
+	log.Println("http server exited")
+
+	grpcSvr.GracefulStop()
+	log.Println("grpc server exited")
 }
 
-func initGRPCServer() {
+func initHTTPServer() *http.Server {
+	r := gin.Default()
+
+	// init route
+	receiver.NewPrometheusRemoteWriteV2Route(r)
+	receiver.NewOTLPHTTPRoute(r)
+
+	// init metrics endpoint
+	r.GET("/metrics", func(c *gin.Context) {
+		metrics.WritePrometheus(c.Writer, true)
+	})
+
+	srv := &http.Server{
+		Addr:    ":8000",
+		Handler: r.Handler(),
+	}
+
+	go func() {
+		// service connections
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("listen: %s\n", err)
+		}
+	}()
+	return srv
+}
+
+func initGRPCServer() *grpc.Server {
 	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 8001))
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
@@ -51,14 +77,10 @@ func initGRPCServer() {
 	var opts []grpc.ServerOption
 	grpcServer := grpc.NewServer(opts...)
 
-	otlp.RegisterMetricsServiceServer(grpcServer, &noopOTLPMetricsServer{})
+	// init endpoints
+	receiver.NewOTLPMetricsEndpoint(grpcServer)
+
 	go grpcServer.Serve(lis)
-}
 
-type noopOTLPMetricsServer struct {
-	otlp.UnimplementedMetricsServiceServer
-}
-
-func (s *noopOTLPMetricsServer) Export(context.Context, *otlp.ExportMetricsServiceRequest) (*otlp.ExportMetricsServiceResponse, error) {
-	return &otlp.ExportMetricsServiceResponse{}, nil
+	return grpcServer
 }
