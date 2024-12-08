@@ -20,8 +20,6 @@ func main() {
 	httpSvr := initHTTPServer()
 	grpcSvr := initGRPCServer()
 
-	// Wait for interrupt signal to gracefully shutdown the server with
-	// a timeout of 5 seconds.
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit

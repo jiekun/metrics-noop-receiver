@@ -21,20 +21,21 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 		b, err := io.ReadAll(c.Request.Body)
 		if err != nil {
 			prometheusRemoteWriteReadErrorTotal.Inc()
+			return
 		}
 
 		var body []byte
 		b, err = snappy.Decode(b, body)
 		if err != nil {
 			prometheusRemoteWriteDecodeErrorTotal.Inc()
+			return
 		}
 
 		writeRequest := prompb.WriteRequest{}
 		err = json.Unmarshal(b, &writeRequest)
 		if err != nil {
 			prometheusRemoteWriteDecodeErrorTotal.Inc()
+			return
 		}
-
-		return
 	})
 }

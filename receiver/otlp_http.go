@@ -20,12 +20,13 @@ func NewOTLPHTTPRoute(r *gin.Engine) {
 		b, err := io.ReadAll(c.Request.Body)
 		if err != nil {
 			otlpHTTPExportReadErrorTotal.Inc()
+			return
 		}
 		req := &otlp.ExportMetricsServiceRequest{}
 		err = proto.Unmarshal(b, req)
 		if err != nil {
 			otlpHTTPExportDecodeErrorTotal.Inc()
+			return
 		}
-		return
 	})
 }
