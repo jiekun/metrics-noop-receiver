@@ -43,7 +43,8 @@ func main() {
 }
 
 func initHTTPServer() *http.Server {
-	r := gin.Default()
+	r := gin.New()
+	r.Use(gin.Recovery())
 
 	// init route
 	receiver.NewPrometheusRemoteWriteV1Route(r)
