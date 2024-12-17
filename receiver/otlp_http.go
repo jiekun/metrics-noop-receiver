@@ -6,6 +6,7 @@ import (
 	otlp "go.opentelemetry.io/proto/otlp/collector/metrics/v1"
 	"google.golang.org/protobuf/proto"
 	"io"
+	"log"
 )
 
 var (
@@ -25,6 +26,7 @@ func NewOTLPHTTPRoute(r *gin.Engine) {
 		req := &otlp.ExportMetricsServiceRequest{}
 		err = proto.Unmarshal(b, req)
 		if err != nil {
+			log.Printf("proto.Unmarshal err: %v\n", err)
 			otlpHTTPExportDecodeErrorTotal.Inc()
 			return
 		}

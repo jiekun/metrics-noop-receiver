@@ -7,6 +7,7 @@ import (
 	"github.com/golang/snappy"
 	prompb "github.com/prometheus/prometheus/prompb"
 	"io"
+	"log"
 )
 
 var (
@@ -27,6 +28,7 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 		var body []byte
 		b, err = snappy.Decode(b, body)
 		if err != nil {
+			log.Printf("snappy.Decode err: %v\n", err)
 			prometheusRemoteWriteDecodeErrorTotal.Inc()
 			return
 		}
@@ -34,6 +36,7 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 		writeRequest := prompb.WriteRequest{}
 		err = json.Unmarshal(b, &writeRequest)
 		if err != nil {
+			log.Printf("json unmarshal write request err: %v\n", err)
 			prometheusRemoteWriteDecodeErrorTotal.Inc()
 			return
 		}
