@@ -4,6 +4,7 @@ import (
 	"github.com/VictoriaMetrics/metrics"
 	"github.com/gin-gonic/gin"
 	"github.com/golang/snappy"
+	"github.com/jiekun/metrics-noop-receiver/zstd"
 	prompb "github.com/prometheus/prometheus/prompb"
 	"io"
 	"log"
@@ -26,7 +27,12 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 		}
 
 		var body []byte
-		body, err = snappy.Decode(body, b)
+		if c.GetHeader("Content-Encoding") == "zstd" {
+			body, err = zstd.Decompress(body, b)
+		} else {
+			body, err = snappy.Decode(body, b)
+		}
+
 		if err != nil {
 			log.Printf("snappy.Decode err: %v\n", err)
 			prometheusRemoteWriteDecodeErrorTotal.Inc()
