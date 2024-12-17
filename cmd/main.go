@@ -46,6 +46,7 @@ func initHTTPServer() *http.Server {
 	r := gin.Default()
 
 	// init route
+	receiver.NewPrometheusRemoteWriteV1Route(r)
 	receiver.NewPrometheusRemoteWriteV2Route(r)
 	receiver.NewOTLPHTTPRoute(r)
 
