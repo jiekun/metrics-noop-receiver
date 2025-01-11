@@ -12,14 +12,16 @@ import (
 )
 
 var (
-	prometheusRemoteWriteV2RequestTotal     = metrics.NewCounter(`requests_total{path="/api/v2/write"}`)
-	prometheusRemoteWriteV2ReadErrorTotal   = metrics.NewCounter(`read_error_total{path="/api/v2/write"}`)
-	prometheusRemoteWriteV2DecodeErrorTotal = metrics.NewCounter(`decode_error_total{path="/api/v2/write"}`)
-	prometheusRemoteWriteV2SampleTotal      = metrics.NewCounter(`sampled_total{path="/api/v2/write"}`)
+	prometheusRemoteWriteV2RequestTotal              = metrics.NewCounter(`requests_total{path="/api/v2/write"}`)
+	prometheusRemoteWriteV2ReadErrorTotal            = metrics.NewCounter(`read_error_total{path="/api/v2/write"}`)
+	prometheusRemoteWriteV2DecodeErrorTotal          = metrics.NewCounter(`decode_error_total{path="/api/v2/write"}`)
+	prometheusRemoteWriteV2PrometheusSampleTotal     = metrics.NewCounter(`sampled_total{path="/api/v2/write",exporter="prometheus-3"}`)
+	prometheusRemoteWriteV2PrometheusZstdSampleTotal = metrics.NewCounter(`sampled_total{path="/api/v2/write",exporter="prometheus-3-zstd"}`)
 )
 
 func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 	r.POST("/api/v2/write", func(c *gin.Context) {
+		sampleCnt, histCnt, ExemplarCnt := 0, 0, 0
 		prometheusRemoteWriteV2RequestTotal.Inc()
 		b, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -35,6 +37,9 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 				prometheusRemoteWriteV2DecodeErrorTotal.Inc()
 				return
 			}
+			defer func() {
+				prometheusRemoteWriteV2PrometheusSampleTotal.Add(sampleCnt)
+			}()
 		} else if contentEnc == "zstd" {
 			body, err = zstd.Decompress(body, b)
 			if err != nil {
@@ -42,6 +47,9 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 				prometheusRemoteWriteV2DecodeErrorTotal.Inc()
 				return
 			}
+			defer func() {
+				prometheusRemoteWriteV2PrometheusZstdSampleTotal.Add(sampleCnt)
+			}()
 		} else {
 			log.Printf("unsupported Content-Encoding: %v\n", contentEnc)
 			prometheusRemoteWriteV2DecodeErrorTotal.Inc()
@@ -56,13 +64,11 @@ func NewPrometheusRemoteWriteV2Route(r *gin.Engine) {
 			return
 		}
 		ts := request.GetTimeseries()
-		sampleCnt, histCnt, ExemplarCnt := 0, 0, 0
 		for i := range ts {
 			sampleCnt += len(ts[i].GetSamples())
 			histCnt += len(ts[i].GetHistograms())
 			ExemplarCnt += len(ts[i].GetExemplars())
 		}
-		prometheusRemoteWriteV2SampleTotal.Add(sampleCnt)
 		c.Writer.Header().Set("X-Prometheus-Remote-Write-Samples-Written", strconv.Itoa(sampleCnt))
 		c.Writer.Header().Set("X-Prometheus-Remote-Write-Histograms-Written", strconv.Itoa(histCnt))
 		c.Writer.Header().Set("X-Prometheus-Remote-Write-Exemplars-Written", strconv.Itoa(ExemplarCnt))

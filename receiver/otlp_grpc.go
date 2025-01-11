@@ -10,7 +10,7 @@ import (
 var (
 	otlpExportRequestTotal     = metrics.NewCounter(`requests_total{path="otlp.export"}`)
 	otlpExportDecodeErrorTotal = metrics.NewCounter(`decode_error_total{path="otlp.export"}`)
-	otlpExportSampleTotal      = metrics.NewCounter(`sampled_total{path="otlp.export"}`)
+	otlpExportSampleTotal      = metrics.NewCounter(`sampled_total{path="otlp.export",exporter="opentelemetry-collector"}`)
 )
 
 type noopOTLPMetricsServer struct {

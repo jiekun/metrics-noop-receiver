@@ -11,14 +11,16 @@ import (
 )
 
 var (
-	prometheusRemoteWriteV1RequestTotal     = metrics.NewCounter(`requests_total{path="/api/v1/write"}`)
-	prometheusRemoteWriteV1ReadErrorTotal   = metrics.NewCounter(`read_error_total{path="/api/v1/write"}`)
-	prometheusRemoteWriteV1DecodeErrorTotal = metrics.NewCounter(`decode_error_total{path="/api/v1/write"}`)
-	prometheusRemoteWriteV1SampleTotal      = metrics.NewCounter(`sampled_total{path="/api/v1/write"}`)
+	prometheusRemoteWriteV1RequestTotal          = metrics.NewCounter(`requests_total{path="/api/v1/write"}`)
+	prometheusRemoteWriteV1ReadErrorTotal        = metrics.NewCounter(`read_error_total{path="/api/v1/write"}`)
+	prometheusRemoteWriteV1DecodeErrorTotal      = metrics.NewCounter(`decode_error_total{path="/api/v1/write"}`)
+	prometheusRemoteWriteV1PrometheusSampleTotal = metrics.NewCounter(`sampled_total{path="/api/v1/write",exporter="prometheus-2"}`)
+	prometheusRemoteWriteV1VMAgentSampleTotal    = metrics.NewCounter(`sampled_total{path="/api/v1/write",exporter="vmagent"}`)
 )
 
 func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
 	r.POST("/api/v1/write", func(c *gin.Context) {
+		sampleCnt, histCnt, ExemplarCnt := 0, 0, 0
 		prometheusRemoteWriteV1RequestTotal.Inc()
 		b, err := io.ReadAll(c.Request.Body)
 		if err != nil {
@@ -29,8 +31,14 @@ func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
 		var body []byte
 		if c.GetHeader("Content-Encoding") == "zstd" {
 			body, err = zstd.Decompress(body, b)
+			defer func() {
+				prometheusRemoteWriteV1VMAgentSampleTotal.Add(sampleCnt)
+			}()
 		} else {
 			body, err = snappy.Decode(body, b)
+			defer func() {
+				prometheusRemoteWriteV1PrometheusSampleTotal.Add(sampleCnt)
+			}()
 		}
 
 		if err != nil {
@@ -48,12 +56,10 @@ func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
 		}
 
 		ts := writeRequest.GetTimeseries()
-		sampleCnt, histCnt, ExemplarCnt := 0, 0, 0
 		for i := range ts {
 			sampleCnt += len(ts[i].GetSamples())
 			histCnt += len(ts[i].GetHistograms())
 			ExemplarCnt += len(ts[i].GetExemplars())
 		}
-		prometheusRemoteWriteV1SampleTotal.Add(sampleCnt)
 	})
 }
