@@ -13,6 +13,7 @@ var (
 	otlpHTTPExportRequestTotal     = metrics.NewCounter(`requests_total{path="/otlp/export"}`)
 	otlpHTTPExportReadErrorTotal   = metrics.NewCounter(`read_error_total{path="/otlp/export"}`)
 	otlpHTTPExportDecodeErrorTotal = metrics.NewCounter(`decode_error_total{path="/otlp/export"}`)
+	otlpHTTPExportSampleTotal      = metrics.NewCounter(`sampled_total{path="/otlp/export"}`)
 )
 
 func NewOTLPHTTPRoute(r *gin.Engine) {
@@ -29,6 +30,18 @@ func NewOTLPHTTPRoute(r *gin.Engine) {
 			log.Printf("proto.Unmarshal err: %v\n", err)
 			otlpHTTPExportDecodeErrorTotal.Inc()
 			return
+		}
+
+		for _, rs := range req.GetResourceMetrics() {
+			for _, sm := range rs.GetScopeMetrics() {
+				for _, m := range sm.GetMetrics() {
+					gauge := m.GetGauge()
+					exponentialHistogram := m.GetExponentialHistogram()
+					sum := m.GetSum()
+					summary := m.GetSummary()
+					otlpHTTPExportSampleTotal.Add(len(gauge.GetDataPoints()) + len(exponentialHistogram.GetDataPoints()) + len(sum.GetDataPoints()) + len(summary.GetDataPoints()))
+				}
+			}
 		}
 	})
 }

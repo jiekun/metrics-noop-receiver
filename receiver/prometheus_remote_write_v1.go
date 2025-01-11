@@ -14,6 +14,7 @@ var (
 	prometheusRemoteWriteV1RequestTotal     = metrics.NewCounter(`requests_total{path="/api/v1/write"}`)
 	prometheusRemoteWriteV1ReadErrorTotal   = metrics.NewCounter(`read_error_total{path="/api/v1/write"}`)
 	prometheusRemoteWriteV1DecodeErrorTotal = metrics.NewCounter(`decode_error_total{path="/api/v1/write"}`)
+	prometheusRemoteWriteV1SampleTotal      = metrics.NewCounter(`sampled_total{path="/api/v1/write"}`)
 )
 
 func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
@@ -45,5 +46,14 @@ func NewPrometheusRemoteWriteV1Route(r *gin.Engine) {
 			prometheusRemoteWriteV1DecodeErrorTotal.Inc()
 			return
 		}
+
+		ts := writeRequest.GetTimeseries()
+		sampleCnt, histCnt, ExemplarCnt := 0, 0, 0
+		for i := range ts {
+			sampleCnt += len(ts[i].GetSamples())
+			histCnt += len(ts[i].GetHistograms())
+			ExemplarCnt += len(ts[i].GetExemplars())
+		}
+		prometheusRemoteWriteV1SampleTotal.Add(sampleCnt)
 	})
 }
